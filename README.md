@@ -7,8 +7,14 @@ Tidak perlu Composer, tidak ribet, cukup `require` dan langsung jalan!
 
 ## 🚀 Fitur
 
+🔒 Support dual login: challenge-based (lama) dan direct login (baru)
+
+🔁 Auto detect saat koneksi
+
+✅ Kompatibel RouterOS v6 dan v7
+
+
 - Koneksi langsung ke API Mikrotik (port 8728)
-- Login dengan challenge MD5
 - Kirim perintah & baca respons (`/ip/hotspot/user/print`, dll)
 - Ringan, tanpa dependensi eksternal
 
@@ -38,7 +44,7 @@ print_r($response);
 - [x] Parse data `!re` → array terstruktur
 - [x] Command helper: `add()`, `remove()`, `enable()`
 - [x] Handle error `!trap`
-- [ ] Test Connect `!trap`
+- [x] Test Connect `!trap`
 
 ## 📄 License
 

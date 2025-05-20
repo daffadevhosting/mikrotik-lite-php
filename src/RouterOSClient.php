@@ -1,4 +1,6 @@
 <?php
+namespace MikroTikLite;
+
 class RouterOSClient {
     private $ip, $user, $pass, $socket;
 
@@ -8,78 +10,117 @@ class RouterOSClient {
         $this->pass = $pass;
     }
 
-public function connect() {
-    $this->socket = fsockopen($this->ip, 8728, $errno, $errstr, 3);
+public function connect()
+{
+    $this->socket = fsockopen($this->ip, 1209, $errno, $errstr, 3);
     if (!$this->socket) {
         throw new Exception("Gagal konek ke router: $errstr ($errno)");
     }
 
     stream_set_timeout($this->socket, 3);
 
-    // Login pertama (ambil challenge)
+    // Coba login dengan metode baru (direct login, RouterOS v6.43+ dan v7.x)
+    $this->write('/login', false);
+    $this->write('=name=' . $this->user, false);
+    $this->write('=password=' . $this->pass, true);
+    $response = $this->read();
+
+    if (isset($response[0]) && strpos($response[0], '!done') !== false) {
+        return true; // login berhasil
+    }
+
+    // Jika gagal, coba metode login lama (challenge response, RouterOS < 6.43)
+    // Reset socket
+    fclose($this->socket);
+    $this->socket = fsockopen($this->ip, 1209, $errno, $errstr, 3);
+    if (!$this->socket) {
+        throw new Exception("Gagal konek ke router (ulang): $errstr ($errno)");
+    }
+    stream_set_timeout($this->socket, 3);
+
+    // Kirim permintaan challenge
     $this->write('/login', true);
     $response = $this->read();
 
-    $challenge = '';
-    foreach ($response as $line) {
-        if (strpos($line, '=ret=') !== false) {
-            $challenge = substr($line, 5); // fix: 5 karena '=ret=' panjangnya 5
-            break;
-        }
+    if (!isset($response[0]) || !preg_match('/=ret=(.+)/', implode("\n", $response), $matches)) {
+        throw new Exception("Gagal mendapatkan challenge dari router");
     }
 
-    if (!$challenge) {
-        throw new Exception("Login gagal: challenge kosong");
-    }
+    $challenge = hex2bin($matches[1]);
+    $md5 = md5("\x00" . $this->pass . $challenge, true);
 
-    $md5 = md5(chr(0) . $this->pass . hex2bin($challenge), true);
-    $responseHex = '00' . bin2hex($md5);
-
-    // Kirim login kedua
     $this->write('/login', false);
     $this->write('=name=' . $this->user, false);
-    $this->write('=response=' . $responseHex, true);
+    $this->write('=response=00' . bin2hex($md5), true);
 
-    $res = $this->read();
-    if (!in_array('!done', $res)) {
-        throw new Exception("Login gagal");
+    $response = $this->read();
+    if (!isset($response[0]) || strpos($response[0], '!done') === false) {
+        throw new Exception("Login gagal (mode lama)");
     }
 }
 
-    public function comm($command, $params = []) {
-        $this->write($command, false);
-        foreach ($params as $key => $value) {
-            $this->write("={$key}={$value}", false);
-        }
-        $this->write('', true);
-        $raw = $this->read();
-        return $this->parseResponse($raw);
+public function comm($command, $params = []) {
+    $this->write($command, false);
+    foreach ($params as $key => $value) {
+        $this->write("={$key}={$value}", false);
     }
+    $this->write('', true); // ⬅️ akhir dari perintah (null byte)
+    return $this->parseResponse($this->read());
+}
 
-    private function parseResponse($raw) {
-        $parsed = [];
-        $current = [];
+	public function getSystemInfo() {
+		$info = [];
 
-        foreach ($raw as $line) {
-            if ($line === '!re') {
-                if (!empty($current)) {
-                    $parsed[] = $current;
-                    $current = [];
-                }
-            } elseif (strpos($line, '=') === 0) {
-                $parts = explode('=', $line, 3);
-                if (count($parts) === 3) {
-                    $current[$parts[1]] = $parts[2];
-                }
+		// Ambil identity
+		$identity = $this->comm('/system/identity/print');
+		if (isset($identity[0]['name'])) {
+			$info['Identity'] = $identity[0]['name'];
+		}
+
+		// Ambil resource (version, board, arch, uptime, dll)
+		$resource = $this->comm('/system/resource/print');
+var_dump($resource); exit;
+		if (isset($resource[0])) {
+			$info['Version'] = $resource[0]['version'] ?? '';
+			$info['Board Name'] = $resource[0]['board-name'] ?? '';
+			$info['Architecture'] = $resource[0]['architecture-name'] ?? '';
+			$info['Uptime'] = $resource[0]['uptime'] ?? '';
+		}
+
+		return $info;
+	}
+
+private function parseResponse($raw) {
+    $parsed = [];
+    $current = [];
+
+    foreach ($raw as $line) {
+        if ($line === '!re') {
+            if (!empty($current)) {
+                $parsed[] = $current;
+                $current = [];
+            }
+        } elseif ($line === '!done') {
+            if (!empty($current)) {
+                $parsed[] = $current;
+            }
+            break;
+        } elseif (strpos($line, '=') === 0) {
+            $parts = explode('=', $line, 3);
+            if (count($parts) === 3) {
+                $key = $parts[1];
+                $value = $parts[2];
+                $current[$key] = $value;
             }
         }
-
-        if (!empty($current)) {
-            $parsed[] = $current;
-        }
-
-        return $parsed;
     }
+
+    if (!empty($current)) {
+        $parsed[] = $current;
+    }
+
+    return $parsed;
+}
 
     public function write($command, $last = true) {
         $len = strlen($command);
@@ -152,6 +193,12 @@ public function connect() {
         }
         return 0;
     }
+
+	public function debugPrint($data) {
+		echo "<pre>";
+		print_r($data);
+		echo "</pre>";
+	}
 
     // Placeholder
     public function addUser($username, $password, $profile) {}

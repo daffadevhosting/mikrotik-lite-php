@@ -1,49 +1,37 @@
-<?php
-require_once '../src/RouterOSClient.php';
+<?php // test_connection.php
+require_once __DIR__ . '/../src/RouterOSClient.php';
 
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
+use MikroTikLite\RouterOSClient;
 
-$ip = $_POST['ip'];
-$user = $_POST['user'];
-$pass = $_POST['pass'];
+header('Content-Type: application/json');
 
-$api = new RouterOSClient($ip, $user, $pass);
+$ip = $_POST['ip'] ?? '';
+$user = $_POST['user'] ?? '';
+$pass = $_POST['pass'] ?? '';
 
-if (!$ip || !$user || !$pass) {
-    exit("<p style='color:red;'>❌ IP / User / Pass kosong</p>");
+if (!$ip || !$user) {
+    echo json_encode(['success' => false, 'message' => 'IP dan Username wajib diisi.']);
+    exit;
 }
 
 try {
     $api = new RouterOSClient($ip, $user, $pass);
     $api->connect();
-    echo "<h3 style='color:green;'>✅ Koneksi Berhasil!</h3>";
 
-    $identityRaw = $api->comm('/system/identity/print');
-    $resourceRaw = $api->comm('/system/resource/print');
+    $identity = $api->comm('/system/identity/print');
+    $resource = $api->comm('/system/resource/print');
 
-    echo "<pre style='background:#eee;padding:10px'>";
-    echo "DEBUG - Identity Raw:\n";
-    print_r($identityRaw);
-    echo "DEBUG - Resource Raw:\n";
-    print_r($resourceRaw);
-    echo "</pre>";
-
-    $identity = $identityRaw[0] ?? null;
-    $resource = $resourceRaw[0] ?? null;
-
-    if (!$identity || !$resource) {
-        echo "<p style='color:red;'>⚠️ Tidak dapat mengambil info device (data kosong atau tidak sesuai).</p>";
-    } else {
-        echo "<ul>";
-        echo "<li><strong>Identity:</strong> " . htmlspecialchars($identity['name']) . "</li>";
-        echo "<li><strong>Version:</strong> " . htmlspecialchars($resource['version']) . "</li>";
-        echo "<li><strong>Board Name:</strong> " . htmlspecialchars($resource['board-name']) . "</li>";
-        echo "<li><strong>Architecture:</strong> " . htmlspecialchars($resource['architecture-name']) . "</li>";
-        echo "<li><strong>Uptime:</strong> " . htmlspecialchars($resource['uptime']) . "</li>";
-        echo "</ul>";
-    }
-
+    echo json_encode([
+        'success' => true,
+        'identity' => $identity[0]['name'] ?? 'Tidak tersedia',
+        'version' => $resource[0]['version'] ?? 'Tidak tersedia',
+        'board_name' => $resource[0]['board-name'] ?? 'Tidak tersedia',
+        'architecture' => $resource[0]['architecture-name'] ?? 'Tidak tersedia',
+        'uptime' => $resource[0]['uptime'] ?? 'Tidak tersedia',
+    ]);
 } catch (Exception $e) {
-    echo "<h3 style='color:red;'>❌ Gagal konek: " . htmlspecialchars($e->getMessage()) . "</h3>";
+    echo json_encode([
+        'success' => false,
+        'message' => 'Gagal koneksi: ' . $e->getMessage()
+    ]);
 }
