@@ -21,7 +21,9 @@ Tidak perlu Composer, tidak ribet, cukup `require` dan langsung jalan!
 ## 💻 Contoh Penggunaan
 
 ```php
-require_once 'src/RouterOSClient.php';
+require_once __DIR__ . '/../src/RouterOSClient.php';
+
+use MikroTikLite\RouterOSClient;
 
 $api = new RouterOSClient('192.168.88.1', 'admin', '');
 $api->connect();

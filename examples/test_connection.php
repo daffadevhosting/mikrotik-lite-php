@@ -17,6 +17,7 @@ if (!$ip || !$user) {
 try {
     $api = new RouterOSClient($ip, $user, $pass);
     $api->connect();
+	
 
     $identity = $api->comm('/system/identity/print');
     $resource = $api->comm('/system/resource/print');
@@ -29,6 +30,7 @@ try {
         'architecture' => $resource[0]['architecture-name'] ?? 'Tidak tersedia',
         'uptime' => $resource[0]['uptime'] ?? 'Tidak tersedia',
     ]);
+	
 } catch (Exception $e) {
     echo json_encode([
         'success' => false,
