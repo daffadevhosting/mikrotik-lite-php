@@ -12,7 +12,7 @@ class RouterOSClient {
 
 	public function connect()
 	{
-		$this->socket = fsockopen($this->ip, 1209, $errno, $errstr, 3);
+		$this->socket = fsockopen($this->ip, 8728, $errno, $errstr, 3);
 		if (!$this->socket) {
 			throw new Exception("Gagal konek ke router: $errstr ($errno)");
 		}
@@ -32,7 +32,7 @@ class RouterOSClient {
 		// Jika gagal, coba metode login lama (challenge response, RouterOS < 6.43)
 		// Reset socket
 		fclose($this->socket);
-		$this->socket = fsockopen($this->ip, 1209, $errno, $errstr, 3);
+		$this->socket = fsockopen($this->ip, 8728, $errno, $errstr, 3);
 		if (!$this->socket) {
 			throw new Exception("Gagal konek ke router (ulang): $errstr ($errno)");
 		}
