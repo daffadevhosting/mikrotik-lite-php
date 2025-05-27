@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>MikroTik Firebase Integration</title>
+  <style>
+    #result, #testResult, #loading {
+      margin-top: 10px;
+      font-weight: bold;
+    }
+    #loading {
+      color: blue;
+    }
+    #result.success, #testResult.success {
+      color: green;
+    }
+    #result.error, #testResult.error {
+      color: red;
+    }
+  </style>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+</head>
+<body>
+
+  <h2>Input Login MikroTik</h2>
+  <form id="routerForm">
+    <label>IP Address:</label><br>
+    <input type="text" id="ip"><br>
+    <label>Username:</label><br>
+    <input type="text" id="username"><br>
+    <label>Password:</label><br>
+    <input type="password" id="password"><br><br>
+    <button type="submit">Simpan ke Firebase</button>
+  </form>
+
+  <div id="loading" style="display:none;">Memproses...</div>
+  <div id="result"></div>
+
+  <hr>
+
+  <h2>Data Login Tersimpan</h2>
+  <div id="savedData"></div>
+  <button id="testBtn">Tes Koneksi ke MikroTik</button>
+  <div id="testResult"></div>
+
+  <script>
+    // Ganti dengan konfigurasi Firebase milikmu
+    const firebaseConfig = {
+      apiKey: "API_KEY_MU",
+      authDomain: "PROJECT_ID.firebaseapp.com",
+      databaseURL: "https://PROJECT_ID.firebaseio.com",
+      projectId: "PROJECT_ID",
+      storageBucket: "PROJECT_ID.appspot.com",
+      messagingSenderId: "1234567890",
+      appId: "APP_ID_MU"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    const result = document.getElementById('result');
+    const testResult = document.getElementById('testResult');
+    const loading = document.getElementById('loading');
+
+    const form = document.getElementById('routerForm');
+    const savedDataDiv = document.getElementById('savedData');
+    let savedData = {};
+
+    // Simpan data login
+    form.addEventListener('submit', function(e) {
+      e.preventDefault();
+      const ip = document.getElementById('ip').value;
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+
+      if (!ip || !username || !password) {
+        showMessage(result, "Semua kolom wajib diisi!", 'error');
+        return;
+      }
+
+      loading.style.display = 'block';
+      result.innerText = '';
+
+      db.ref('mikrotik_logins/router').set({
+        ip, username, password
+      }, (error) => {
+        loading.style.display = 'none';
+        if (error) {
+          showMessage(result, "Gagal menyimpan: " + error, 'error');
+        } else {
+          showMessage(result, "Data berhasil disimpan!", 'success');
+          loadSavedData(); // Refresh tampilan
+        }
+      });
+    });
+
+    // Load data login MikroTik dari Firebase
+    function loadSavedData() {
+      db.ref('mikrotik_logins/router').once('value', (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+          savedData = data;
+          savedDataDiv.innerHTML = `
+            <p><strong>IP:</strong> ${data.ip}</p>
+            <p><strong>Username:</strong> ${data.username}</p>
+          `;
+        } else {
+          savedDataDiv.innerHTML = '<p>Belum ada data login tersimpan.</p>';
+        }
+      });
+    }
+
+    // Tombol tes koneksi
+    document.getElementById('testBtn').addEventListener('click', function() {
+      if (!savedData.ip || !savedData.username || !savedData.password) {
+        showMessage(testResult, "Data login tidak lengkap!", 'error');
+        return;
+      }
+
+      testResult.innerText = '';
+      loading.style.display = 'block';
+
+      fetch('test_connection.php', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: `ip=${encodeURIComponent(savedData.ip)}&user=${encodeURIComponent(savedData.username)}&pass=${encodeURIComponent(savedData.password)}`
+      })
+      .then(res => res.json())
+      .then(data => {
+        loading.style.display = 'none';
+        if (data.success) {
+          showMessage(testResult, `Koneksi berhasil! Router: ${data.identity} | Versi: ${data.version}`, 'success');
+        } else {
+          showMessage(testResult, `Gagal koneksi: ${data.message}`, 'error');
+        }
+      })
+      .catch(err => {
+        loading.style.display = 'none';
+        showMessage(testResult, `Error: ${err.message}`, 'error');
+      });
+    });
+
+    // Utilitas
+    function showMessage(el, msg, type) {
+      el.className = type;
+      el.innerText = msg;
+    }
+
+    loadSavedData();
+  </script>
+
+</body>
+</html>
