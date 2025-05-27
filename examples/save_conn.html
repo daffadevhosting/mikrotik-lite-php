@@ -46,11 +46,14 @@
         return;
       }
 
+const db = firebase.database();
+const user = firebase.auth().currentUser;
       // Simpan ke Firebase dengan ID unik misalnya 'router'
       db.ref('mikrotik_logins/router').set({
         ip: ip,
         username: username,
-        password: password
+        password: password,
+        owner: user.uid
       }, (error) => {
         if (error) {
           document.getElementById('result').innerText = "Gagal menyimpan: " + error;
