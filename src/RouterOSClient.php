@@ -10,125 +10,113 @@ class RouterOSClient {
         $this->pass = $pass;
     }
 
-	public function connect()
-	{
-		$this->socket = fsockopen($this->ip, 8728, $errno, $errstr, 3);
-		if (!$this->socket) {
-			throw new Exception("Gagal konek ke router: $errstr ($errno)");
-		}
+    public function connect() {
+        $this->socket = fsockopen($this->ip, 8728, $errno, $errstr, 3);
+        if (!$this->socket) {
+            throw new \Exception("Gagal konek ke router: $errstr ($errno)");
+        }
+        stream_set_timeout($this->socket, 3);
 
-		stream_set_timeout($this->socket, 3);
+        $this->write('/login', false);
+        $this->write('=name=' . $this->user, false);
+        $this->write('=password=' . $this->pass, true);
+        $response = $this->read();
 
-		// Coba login dengan metode baru (direct login, RouterOS v6.43+ dan v7.x)
-		$this->write('/login', false);
-		$this->write('=name=' . $this->user, false);
-		$this->write('=password=' . $this->pass, true);
-		$response = $this->read();
+        if (isset($response[0]) && strpos($response[0], '!done') !== false) {
+            return true;
+        }
 
-		if (isset($response[0]) && strpos($response[0], '!done') !== false) {
-			return true; // login berhasil
-		}
+        // Login lama
+        fclose($this->socket);
+        $this->socket = fsockopen($this->ip, 8728, $errno, $errstr, 3);
+        if (!$this->socket) {
+            throw new \Exception("Gagal konek ke router (ulang): $errstr ($errno)");
+        }
+        stream_set_timeout($this->socket, 3);
 
-		// Jika gagal, coba metode login lama (challenge response, RouterOS < 6.43)
-		// Reset socket
-		fclose($this->socket);
-		$this->socket = fsockopen($this->ip, 8728, $errno, $errstr, 3);
-		if (!$this->socket) {
-			throw new Exception("Gagal konek ke router (ulang): $errstr ($errno)");
-		}
-		stream_set_timeout($this->socket, 3);
+        $this->write('/login', true);
+        $response = $this->read();
 
-		// Kirim permintaan challenge
-		$this->write('/login', true);
-		$response = $this->read();
+        if (!isset($response[0]) || !preg_match('/=ret=(.+)/', implode("\n", $response), $matches)) {
+            throw new \Exception("Gagal mendapatkan challenge dari router");
+        }
 
-		if (!isset($response[0]) || !preg_match('/=ret=(.+)/', implode("\n", $response), $matches)) {
-			throw new Exception("Gagal mendapatkan challenge dari router");
-		}
+        $challenge = hex2bin($matches[1]);
+        $md5 = md5("\x00" . $this->pass . $challenge, true);
 
-		$challenge = hex2bin($matches[1]);
-		$md5 = md5("\x00" . $this->pass . $challenge, true);
+        $this->write('/login', false);
+        $this->write('=name=' . $this->user, false);
+        $this->write('=response=00' . bin2hex($md5), true);
 
-		$this->write('/login', false);
-		$this->write('=name=' . $this->user, false);
-		$this->write('=response=00' . bin2hex($md5), true);
+        $response = $this->read();
+        if (!isset($response[0]) || strpos($response[0], '!done') === false) {
+            throw new \Exception("Login gagal (mode lama)");
+        }
+    }
 
-		$response = $this->read();
-		if (!isset($response[0]) || strpos($response[0], '!done') === false) {
-			throw new Exception("Login gagal (mode lama)");
-		}
-	}
+    public function comm($command, $params = []) {
+        $this->write($command, false);
+        foreach ($params as $key => $value) {
+            $this->write("={$key}={$value}", false);
+        }
+        $this->write('', true);
+        return $this->parseResponse($this->read());
+    }
 
-	public function comm($command, $params = []) {
-		$this->write($command, false);
-		foreach ($params as $key => $value) {
-			$this->write("={$key}={$value}", false);
-		}
-		$this->write('', true); // ⬅️ akhir dari perintah (null byte)
-		return $this->parseResponse($this->read());
-	}
+    public function getSystemInfo() {
+        $info = [];
 
-	public function getSystemInfo() {
-		$info = [];
+        $identity = $this->comm('/system/identity/print');
+        if (isset($identity[0]['name'])) {
+            $info['Identity'] = $identity[0]['name'];
+        }
 
-		// Ambil identity
-		$identity = $this->comm('/system/identity/print');
-		if (isset($identity[0]['name'])) {
-			$info['Identity'] = $identity[0]['name'];
-		}
+        $resource = $this->comm('/system/resource/print');
+        if (isset($resource[0])) {
+            $info['Version'] = $resource[0]['version'] ?? '';
+            $info['Board Name'] = $resource[0]['board-name'] ?? '';
+            $info['Architecture'] = $resource[0]['architecture-name'] ?? '';
+            $info['Uptime'] = $resource[0]['uptime'] ?? '';
+        }
 
-		// Ambil resource (version, board, arch, uptime, dll)
-		$resource = $this->comm('/system/resource/print');
-		
-		if (isset($resource[0])) {
-			$info['Version'] = $resource[0]['version'] ?? '';
-			$info['Board Name'] = $resource[0]['board-name'] ?? '';
-			$info['Architecture'] = $resource[0]['architecture-name'] ?? '';
-			$info['Uptime'] = $resource[0]['uptime'] ?? '';
-		}
+        return $info;
+    }
 
-		return $info;
-	}
+    private function parseResponse($raw) {
+        $parsed = [];
+        $current = [];
 
-	private function parseResponse($raw) {
-		$parsed = [];
-		$current = [];
+        foreach ($raw as $line) {
+            if ($line === '!re') {
+                if (!empty($current)) {
+                    $parsed[] = $current;
+                    $current = [];
+                }
+            } elseif ($line === '!done') {
+                if (!empty($current)) {
+                    $parsed[] = $current;
+                }
+                break;
+            } elseif (strpos($line, '=') === 0) {
+                $parts = explode('=', $line, 3);
+                if (count($parts) === 3) {
+                    $current[$parts[1]] = $parts[2];
+                }
+            }
+        }
 
-		foreach ($raw as $line) {
-			if ($line === '!re') {
-				if (!empty($current)) {
-					$parsed[] = $current;
-					$current = [];
-				}
-			} elseif ($line === '!done') {
-				if (!empty($current)) {
-					$parsed[] = $current;
-				}
-				break;
-			} elseif (strpos($line, '=') === 0) {
-				$parts = explode('=', $line, 3);
-				if (count($parts) === 3) {
-					$key = $parts[1];
-					$value = $parts[2];
-					$current[$key] = $value;
-				}
-			}
-		}
+        if (!empty($current)) {
+            $parsed[] = $current;
+        }
 
-		if (!empty($current)) {
-			$parsed[] = $current;
-		}
-
-		return $parsed;
-	}
+        return $parsed;
+    }
 
     public function write($command, $last = true) {
         $len = strlen($command);
         $this->writeLength($len);
         fwrite($this->socket, $command);
-        if ($last) {
-            fwrite($this->socket, chr(0));
-        }
+        if ($last) fwrite($this->socket, chr(0));
     }
 
     private function writeLength($length) {
@@ -170,37 +158,21 @@ class RouterOSClient {
 
     private function readLength() {
         $c = ord(fread($this->socket, 1));
-        if (($c & 0x80) == 0x00) {
-            return $c;
-        } elseif (($c & 0xC0) == 0x80) {
-            $c2 = ord(fread($this->socket, 1));
-            return (($c & ~0xC0) << 8) + $c2;
-        } elseif (($c & 0xE0) == 0xC0) {
-            $c2 = ord(fread($this->socket, 1));
-            $c3 = ord(fread($this->socket, 1));
-            return (($c & ~0xE0) << 16) + ($c2 << 8) + $c3;
-        } elseif (($c & 0xF0) == 0xE0) {
-            $c2 = ord(fread($this->socket, 1));
-            $c3 = ord(fread($this->socket, 1));
-            $c4 = ord(fread($this->socket, 1));
-            return (($c & ~0xF0) << 24) + ($c2 << 16) + ($c3 << 8) + $c4;
-        } elseif ($c == 0xF0) {
-            $c1 = ord(fread($this->socket, 1));
-            $c2 = ord(fread($this->socket, 1));
-            $c3 = ord(fread($this->socket, 1));
-            $c4 = ord(fread($this->socket, 1));
-            return ($c1 << 24) + ($c2 << 16) + ($c3 << 8) + $c4;
-        }
+        if (($c & 0x80) == 0x00) return $c;
+        elseif (($c & 0xC0) == 0x80) return (($c & ~0xC0) << 8) + ord(fread($this->socket, 1));
+        elseif (($c & 0xE0) == 0xC0) return (($c & ~0xE0) << 16) + (ord(fread($this->socket, 1)) << 8) + ord(fread($this->socket, 1));
+        elseif (($c & 0xF0) == 0xE0) return (($c & ~0xF0) << 24) + (ord(fread($this->socket, 1)) << 16) + (ord(fread($this->socket, 1)) << 8) + ord(fread($this->socket, 1));
+        elseif ($c == 0xF0) return (ord(fread($this->socket, 1)) << 24) + (ord(fread($this->socket, 1)) << 16) + (ord(fread($this->socket, 1)) << 8) + ord(fread($this->socket, 1));
         return 0;
     }
 
-	public function debugPrint($data) {
-		echo "<pre>";
-		print_r($data);
-		echo "</pre>";
-	}
+    public function debugPrint($data) {
+        echo "<pre>";
+        print_r($data);
+        echo "</pre>";
+    }
 
-    // Placeholder
+    // Future enhancement placeholders
     public function addUser($username, $password, $profile) {}
     public function topupUser($username, $profile) {}
     public function disconnectUser($username) {}
