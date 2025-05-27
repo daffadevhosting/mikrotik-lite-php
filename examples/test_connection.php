@@ -9,8 +9,8 @@ $ip = $_POST['ip'] ?? '';
 $user = $_POST['user'] ?? '';
 $pass = $_POST['pass'] ?? '';
 
-if (!$ip || !$user) {
-    echo json_encode(['success' => false, 'message' => 'IP dan Username wajib diisi.']);
+if (!$ip || !$user || $pass === '') {
+    echo json_encode(['success' => false, 'message' => 'IP, Username, dan Password wajib diisi.']);
     exit;
 }
 
