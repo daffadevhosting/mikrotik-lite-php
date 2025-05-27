@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Simpan MikroTik ke Firebase</title>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+</head>
+<body>
+  <h3>Input Login MikroTik</h3>
+  <form id="routerForm">
+    <label>IP Address:</label><br>
+    <input type="text" id="ip"><br>
+    <label>Username:</label><br>
+    <input type="text" id="username"><br>
+    <label>Password:</label><br>
+    <input type="password" id="password"><br><br>
+    <button type="submit">Simpan ke Firebase</button>
+  </form>
+
+  <div id="result"></div>
+
+  <script>
+    // Konfigurasi Firebase (Ganti dengan punyamu)
+    const firebaseConfig = {
+      apiKey: "API_KEY_MU",
+      authDomain: "PROJECT_ID.firebaseapp.com",
+      databaseURL: "https://PROJECT_ID.firebaseio.com",
+      projectId: "PROJECT_ID",
+      storageBucket: "PROJECT_ID.appspot.com",
+      messagingSenderId: "1234567890",
+      appId: "APP_ID_MU"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    document.getElementById('routerForm').addEventListener('submit', function (e) {
+      e.preventDefault();
+
+      const ip = document.getElementById('ip').value;
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+
+      if (!ip || !username || !password) {
+        document.getElementById('result').innerText = "Semua kolom wajib diisi!";
+        return;
+      }
+
+      // Simpan ke Firebase dengan ID unik misalnya 'router'
+      db.ref('mikrotik_logins/router').set({
+        ip: ip,
+        username: username,
+        password: password
+      }, (error) => {
+        if (error) {
+          document.getElementById('result').innerText = "Gagal menyimpan: " + error;
+        } else {
+          document.getElementById('result').innerText = "Data berhasil disimpan!";
+        }
+      });
+    });
+  </script>
+</body>
+</html>
