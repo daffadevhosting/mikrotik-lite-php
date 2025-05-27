@@ -1,0 +1,10 @@
+{
+  "rules": {
+    "mikrotik_logins": {
+      "$routerId": {
+        ".read": "auth != null && auth.uid === data.child('owner').val()",
+        ".write": "auth != null && (!data.exists() || auth.uid === data.child('owner').val())"
+      }
+    }
+  }
+}
