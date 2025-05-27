@@ -18,19 +18,8 @@
   </form>
 
   <div id="result"></div>
-
-  <script>
-    // Konfigurasi Firebase (Ganti dengan punyamu)
-    const firebaseConfig = {
-      apiKey: "API_KEY_MU",
-      authDomain: "PROJECT_ID.firebaseapp.com",
-      databaseURL: "https://PROJECT_ID.firebaseio.com",
-      projectId: "PROJECT_ID",
-      storageBucket: "PROJECT_ID.appspot.com",
-      messagingSenderId: "1234567890",
-      appId: "APP_ID_MU"
-    };
-
+<script src="firebase-config.js"></script>
+<script>
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
